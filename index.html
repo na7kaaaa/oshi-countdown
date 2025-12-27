@@ -1,241 +1,221 @@
-<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>推し活カウントダウン</title>
-  <style>
-    :root { --bg:#0b0f14; --card:#111827; --text:#e5e7eb; --muted:#9ca3af; --accent:#f472b6; }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; padding: 16px;
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
-      background: transparent;
-      color: var(--text);
-    }
-    .wrap { max-width: 520px; margin: 0 auto; }
-    .card {
-      background: linear-gradient(180deg, rgba(244,114,182,.14), rgba(244,114,182,0)) , var(--card);
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 18px;
-      padding: 14px 14px 12px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.25);
-    }
-    .title { font-size: 13px; letter-spacing: .08em; color: var(--muted); margin-bottom: 10px; }
-    .row {
-      display: grid;
-      grid-template-columns: 32px 1fr auto;
-      gap: 10px;
-      align-items: center;
-      padding: 10px 10px;
-      border-radius: 14px;
-      background: rgba(255,255,255,.03);
-    }
-    .row + .row { margin-top: 10px; }
-    .emoji { font-size: 20px; }
-    .label { font-size: 14px; }
-    .sub { display:block; font-size: 12px; color: var(--muted); margin-top: 2px; }
-    .pill {
-      font-variant-numeric: tabular-nums;
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: rgba(244,114,182,.16);
-      border: 1px solid rgba(244,114,182,.25);
-      color: #ffd1e8;
-      font-size: 13px;
-      white-space: nowrap;
-    }
-    .today { background: rgba(16,185,129,.16); border-color: rgba(16,185,129,.25); color: #b7ffdf; }
-    .past { background: rgba(239,68,68,.16); border-color: rgba(239,68,68,.25); color: #ffd1d1; }
-    .footer { margin-top: 10px; font-size: 11px; color: var(--muted); display:flex; justify-content: space-between; }
-    button {
-      appearance: none; border: 1px solid rgba(255,255,255,.12);
-      background: rgba(255,255,255,.04); color: var(--text);
-      padding: 6px 10px; border-radius: 12px; cursor: pointer; font-size: 11px;
-    }
-    button:hover { background: rgba(255,255,255,.07); }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="card" role="group" aria-label="推し活カウントダウン">
-      <div class="title">推し活ウィジェット</div>
+<script>
+  // =========================
+  //  推し活ウィジェット（index完結版）
+  //  - 次の試合 → 次のイベント
+  //  - 日付は localStorage に保存（ボタンで随時更新）
+  // =========================
 
-      <div class="row">
-        <div class="emoji">🎂</div>
-        <div class="label">
-          <span id="bLabel">推し誕生日</span>
-          <span class="sub" id="bDateText">—</span>
-        </div>
-        <div class="pill" id="bCountdown">—</div>
-      </div>
+  // 表示・計算設定（必要ならここだけ）
+  const LOCALE = "ja-JP";
+  const TIMEZONE = "Asia/Tokyo";
+  const STORAGE_KEY = "oshi_widget_data_v1";
 
-      <div class="row">
-        <div class="emoji">🏐</div>
-        <div class="label">
-          <span id="eLabel">次のイベント</span>
-          <span class="sub" id="eDateText">—</span>
-        </div>
-        <div class="pill" id="eCountdown">—</div>
-      </div>
+  // 初期データ（最初だけ使われる。以後はボタンで更新した内容が優先）
+  const DEFAULT_DATA = {
+    oshiName: "推し",
+    birthday: "2000-08-06", // 年は仮でOK（毎年の次の誕生日を計算）
+    events: [
+      { name: "次のイベント", date: "2026-01-05" }
+    ]
+  };
 
-      <div class="footer">
-        <span id="nowText">—</span>
-        <button id="editBtn" type="button">日付を変更</button>
-      </div>
-    </div>
-  </div>
+  const $ = (id) => document.getElementById(id);
 
-  <script>
-    // ====== ここを編集するだけでOK ======
-    const CONFIG = {
-      oshiname: "推し",               // 表示名
-      birthday: "2000-08-06",         // 推しの誕生日（年は仮でOK）
-      // birthdayMode:
-      //  "next" = 次に来る誕生日まで（毎年更新）←推し誕なら基本これ
-      //  "fixed" = 指定日そのものまで（年も意味があるとき）
-      birthdayMode: "next",
+  function parseYMD(ymd) {
+    // timezoneズレを避けるため「UTC正午」で扱う
+    const [y, m, d] = ymd.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  }
 
-      nextEventName: "次の試合",
-      nextEventDate: "2026-01-05",    // 次イベント日（YYYY-MM-DD）
-      // イベントが複数あるなら配列でもOK（最短を自動で選ぶ）
-      // nextEventDate: ["2026-01-05","2026-01-18"]
+  function tokyoTodayUTCNoon() {
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat(LOCALE, {
+      timeZone: TIMEZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(now);
 
-      locale: "ja-JP",
-      timeZone: "Asia/Tokyo"
-    };
+    const y = parts.find(p => p.type === "year").value;
+    const m = parts.find(p => p.type === "month").value;
+    const d = parts.find(p => p.type === "day").value;
+    return parseYMD(`${y}-${m}-${d}`);
+  }
 
-    // ====== ユーティリティ ======
-    const $ = (id) => document.getElementById(id);
+  function daysDiff(fromUTCNoon, toUTCNoon) {
+    const ms = toUTCNoon - fromUTCNoon;
+    return Math.round(ms / (1000 * 60 * 60 * 24));
+  }
 
-    function parseYMD(ymd) {
-      // timezoneズレを避けて「正午」で扱う（Notion埋め込みでも安定）
-      const [y,m,d] = ymd.split("-").map(Number);
-      return new Date(Date.UTC(y, m-1, d, 12, 0, 0));
+  function formatDate(ymd) {
+    const dt = parseYMD(ymd);
+    return new Intl.DateTimeFormat(LOCALE, {
+      timeZone: TIMEZONE,
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      weekday: "short"
+    }).format(dt);
+  }
+
+  function nextBirthday(birthdayYMD, baseDateUTCNoon) {
+    const [, mm, dd] = birthdayYMD.split("-").map(Number);
+
+    const yearNow = Number(new Intl.DateTimeFormat(LOCALE, {
+      timeZone: TIMEZONE,
+      year: "numeric"
+    }).format(new Date()));
+
+    let target = new Date(Date.UTC(yearNow, mm - 1, dd, 12, 0, 0));
+    if (daysDiff(baseDateUTCNoon, target) < 0) {
+      target = new Date(Date.UTC(yearNow + 1, mm - 1, dd, 12, 0, 0));
     }
 
-    function todayUTCNoon() {
-      const now = new Date();
-      // Tokyoの「今日」を基準にしたいので、Intlで日付だけ取り直す
-      const parts = new Intl.DateTimeFormat(CONFIG.locale, {
-        timeZone: CONFIG.timeZone,
-        year: "numeric", month: "2-digit", day: "2-digit"
-      }).formatToParts(now);
-      const y = parts.find(p=>p.type==="year").value;
-      const m = parts.find(p=>p.type==="month").value;
-      const d = parts.find(p=>p.type==="day").value;
-      return parseYMD(`${y}-${m}-${d}`);
-    }
+    const y = target.getUTCFullYear();
+    const m = String(target.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(target.getUTCDate()).padStart(2, "0");
+    return { ymd: `${y}-${m}-${d}`, dt: target };
+  }
 
-    function formatDate(ymd) {
-      const dt = parseYMD(ymd);
-      return new Intl.DateTimeFormat(CONFIG.locale, {
-        timeZone: CONFIG.timeZone,
-        year: "numeric", month: "long", day: "numeric", weekday: "short"
-      }).format(dt);
+  function setPill(el, diff) {
+    el.classList.remove("today", "past");
+    if (diff === 0) {
+      el.textContent = "🎉 今日！";
+      el.classList.add("today");
+    } else if (diff > 0) {
+      el.textContent = `あと ${diff}日`;
+    } else {
+      el.textContent = `${Math.abs(diff)}日 経過`;
+      el.classList.add("past");
     }
+  }
 
-    function daysDiff(fromUTCNoon, toUTCNoon) {
-      const ms = toUTCNoon - fromUTCNoon;
-      return Math.round(ms / (1000 * 60 * 60 * 24));
+  function loadData() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return structuredClone(DEFAULT_DATA);
+      const parsed = JSON.parse(raw);
+
+      // 最低限の整形
+      if (!parsed.oshiName) parsed.oshiName = DEFAULT_DATA.oshiName;
+      if (!parsed.birthday) parsed.birthday = DEFAULT_DATA.birthday;
+      if (!Array.isArray(parsed.events)) parsed.events = structuredClone(DEFAULT_DATA.events);
+      return parsed;
+    } catch {
+      return structuredClone(DEFAULT_DATA);
     }
+  }
 
-    function pickNearestEvent(dateOrArray, baseDateUTCNoon) {
-      const list = Array.isArray(dateOrArray) ? dateOrArray : [dateOrArray];
-      let best = null;
-      for (const ymd of list) {
-        const dt = parseYMD(ymd);
-        const diff = daysDiff(baseDateUTCNoon, dt);
-        if (diff >= 0 && (best === null || diff < best.diff)) best = { ymd, dt, diff };
+  function saveData(data) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  }
+
+  function pickNearestUpcomingEvent(events, baseDateUTCNoon) {
+    // 未来の最短を優先、なければ一番近い過去
+    let bestFuture = null;
+    let bestPast = null;
+
+    for (const ev of events) {
+      if (!ev?.date) continue;
+      const dt = parseYMD(ev.date);
+      const diff = daysDiff(baseDateUTCNoon, dt);
+
+      if (diff >= 0) {
+        if (!bestFuture || diff < bestFuture.diff) bestFuture = { ...ev, dt, diff };
+      } else {
+        if (!bestPast || diff > bestPast.diff) bestPast = { ...ev, dt, diff };
       }
-      // 全部過去なら一番近い過去を表示
-      if (!best) {
-        let pastBest = null;
-        for (const ymd of list) {
-          const dt = parseYMD(ymd);
-          const diff = daysDiff(baseDateUTCNoon, dt);
-          if (pastBest === null || diff > pastBest.diff) pastBest = { ymd, dt, diff };
-        }
-        return pastBest;
-      }
-      return best;
+    }
+    return bestFuture || bestPast || null;
+  }
+
+  function render() {
+    const base = tokyoTodayUTCNoon();
+    const data = loadData();
+
+    // 誕生日
+    $("bLabel").textContent = `推し誕生日（${data.oshiName || "推し"}）`;
+    const bTarget = nextBirthday(data.birthday, base);
+    $("bDateText").textContent = formatDate(bTarget.ymd);
+    setPill($("bCountdown"), daysDiff(base, bTarget.dt));
+
+    // 次のイベント（最短を自動表示）
+    const ev = pickNearestUpcomingEvent(data.events || [], base);
+    $("eLabel").textContent = ev?.name || "次のイベント";
+    $("eDateText").textContent = ev?.date ? formatDate(ev.date) : "—";
+    setPill($("eCountdown"), ev ? ev.diff : 0);
+
+    // 更新時刻
+    const now = new Date();
+    $("nowText").textContent =
+      "更新: " +
+      new Intl.DateTimeFormat(LOCALE, {
+        timeZone: TIMEZONE,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit"
+      }).format(now);
+  }
+
+  function quickEdit() {
+    const data = loadData();
+
+    const name = prompt("推しの呼び名（表示用）", data.oshiName);
+    if (name !== null && name.trim() !== "") data.oshiName = name.trim();
+
+    const b = prompt("推しの誕生日（YYYY-MM-DD / 年は仮でOK）", data.birthday);
+    if (b !== null && /^\d{4}-\d{2}-\d{2}$/.test(b.trim())) data.birthday = b.trim();
+
+    // 複数イベントを「名前@日付」で改行入力（簡単で強い）
+    // 例：
+    // 次のイベント@2026-01-05
+    // 現地予定@2026-01-18
+    const currentLines = (data.events || [])
+      .map(ev => `${ev.name || "次のイベント"}@${ev.date}`)
+      .join("\n");
+
+    const lines = prompt(
+      "イベント一覧（1行= 名前@YYYY-MM-DD ）\n例）次のイベント@2026-01-05",
+      currentLines || "次のイベント@2026-01-05"
+    );
+
+    if (lines !== null) {
+      const events = lines
+        .split("\n")
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(row => {
+          const [n, d] = row.split("@").map(x => (x || "").trim());
+          return { name: n || "次のイベント", date: d };
+        })
+        .filter(ev => /^\d{4}-\d{2}-\d{2}$/.test(ev.date));
+
+      // 1個も正しい日付がなければ既存を保持
+      if (events.length > 0) data.events = events;
     }
 
-    function nextBirthday(birthdayYMD, baseDateUTCNoon) {
-      const [_, mm, dd] = birthdayYMD.split("-").map(Number);
-      // base の年（Tokyo今日）を使う
-      const parts = new Intl.DateTimeFormat(CONFIG.locale, {
-        timeZone: CONFIG.timeZone,
-        year: "numeric"
-      }).formatToParts(new Date());
-      const yearNow = Number(parts.find(p=>p.type==="year").value);
+    // 表示名は「次の試合」ではなく「次のイベント」へ寄せる
+    // （ユーザー入力で自由にできるけど、空の時はこれ）
+    data.events = (data.events || []).map(ev => ({
+      name: ev.name || "次のイベント",
+      date: ev.date
+    }));
 
-      let target = new Date(Date.UTC(yearNow, mm-1, dd, 12, 0, 0));
-      if (daysDiff(baseDateUTCNoon, target) < 0) {
-        target = new Date(Date.UTC(yearNow + 1, mm-1, dd, 12, 0, 0));
-      }
-      const y = target.getUTCFullYear();
-      const m = String(target.getUTCMonth()+1).padStart(2,"0");
-      const d = String(target.getUTCDate()).padStart(2,"0");
-      return { ymd: `${y}-${m}-${d}`, dt: target };
-    }
-
-    function setPill(el, diff) {
-      el.classList.remove("today","past");
-      if (diff === 0) { el.textContent = "🎉 今日！"; el.classList.add("today"); }
-      else if (diff > 0) { el.textContent = `あと ${diff}日`; }
-      else { el.textContent = `${Math.abs(diff)}日 経過`; el.classList.add("past"); }
-    }
-
-    function render() {
-      const base = todayUTCNoon();
-
-      // labels
-      $("bLabel").textContent = `推し誕生日（${CONFIG.oshiname}）`;
-      $("eLabel").textContent = CONFIG.nextEventName;
-
-      // birthday target
-      const bTarget = (CONFIG.birthdayMode === "fixed")
-        ? { ymd: CONFIG.birthday, dt: parseYMD(CONFIG.birthday) }
-        : nextBirthday(CONFIG.birthday, base);
-
-      $("bDateText").textContent = formatDate(bTarget.ymd);
-      setPill($("bCountdown"), daysDiff(base, bTarget.dt));
-
-      // event target
-      const ev = pickNearestEvent(CONFIG.nextEventDate, base);
-      $("eDateText").textContent = formatDate(ev.ymd);
-      setPill($("eCountdown"), ev.diff);
-
-      // now footer
-      const now = new Date();
-      $("nowText").textContent =
-        "更新: " +
-        new Intl.DateTimeFormat(CONFIG.locale, {
-          timeZone: CONFIG.timeZone,
-          year: "numeric", month: "2-digit", day: "2-digit",
-          hour: "2-digit", minute: "2-digit"
-        }).format(now);
-    }
-
-    function quickEdit() {
-      const b = prompt("推しの誕生日を YYYY-MM-DD で入力（年は仮でOK）", CONFIG.birthday);
-      if (b) CONFIG.birthday = b.trim();
-
-      const e = prompt("次イベント日を YYYY-MM-DD（複数ならカンマ区切り）", Array.isArray(CONFIG.nextEventDate) ? CONFIG.nextEventDate.join(",") : CONFIG.nextEventDate);
-      if (e) {
-        const arr = e.split(",").map(s=>s.trim()).filter(Boolean);
-        CONFIG.nextEventDate = arr.length > 1 ? arr : arr[0];
-      }
-
-      render();
-    }
-
-    $("editBtn").addEventListener("click", quickEdit);
-
+    saveData(data);
     render();
-    // 1時間おきに更新（Notion埋め込みでもOK）
-    setInterval(render, 60 * 60 * 1000);
-  </script>
-</body>
-</html>
+  }
+
+  // ===== 初期化 =====
+  // 既存データがなければ保存しておく（初回でも動く）
+  if (!localStorage.getItem(STORAGE_KEY)) saveData(structuredClone(DEFAULT_DATA));
+
+  // ボタンのidは、あなたのHTMLに合わせてね
+  // 例：<button id="editBtn">日付を変更</button>
+  const editBtn = document.getElementById("editBtn");
+  if (editBtn) editBtn.addEventListener("click", quickEdit);
+
+  render();
+  setInterval(render, 60 * 60 * 1000); // 1時間ごと更新
+</script>
