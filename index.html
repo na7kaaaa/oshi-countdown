@@ -190,6 +190,140 @@
       gap: 8px;
     }
   }
+
+  /* ===== 編集モーダル ===== */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(61, 50, 34, 0.35);
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    z-index: 100;
+  }
+
+  .modal-overlay.open {
+    display: flex;
+  }
+
+  .modal {
+    width: 100%;
+    max-width: 320px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    background: var(--card);
+    border-radius: 18px;
+    padding: 20px;
+    box-shadow: 0 20px 50px rgba(61, 50, 34, 0.25);
+  }
+
+  .modal-title {
+    font-family: "Zen Maru Gothic", sans-serif;
+    font-size: 16px;
+    margin: 0 0 14px;
+    color: var(--ink);
+  }
+
+  .field {
+    display: block;
+    margin-bottom: 12px;
+    font-size: 12.5px;
+    color: var(--sub);
+    font-family: "Zen Maru Gothic", sans-serif;
+  }
+
+  .field > span {
+    display: block;
+    margin-bottom: 5px;
+  }
+
+  .field input[type="text"],
+  .field input[type="date"] {
+    width: 100%;
+    font-family: "Nunito", sans-serif;
+    font-size: 14px;
+    color: var(--ink);
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: #FFFDF7;
+  }
+
+  .field input:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .event-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .event-row .ev-name {
+    flex: 1.3;
+    min-width: 0;
+  }
+
+  .event-row .ev-date {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .event-row .remove-btn {
+    flex-shrink: 0;
+    width: 30px;
+    border: none;
+    border-radius: 8px;
+    background: var(--line);
+    color: var(--sub);
+    font-size: 15px;
+    cursor: pointer;
+  }
+
+  .ghost-btn {
+    font-family: "Zen Maru Gothic", sans-serif;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: #8A5A00;
+    background: var(--lav-soft);
+    border: none;
+    border-radius: 999px;
+    padding: 7px 14px;
+    cursor: pointer;
+  }
+
+  .ghost-btn.small {
+    padding: 5px 12px;
+    font-size: 12px;
+  }
+
+  .primary-btn {
+    font-family: "Zen Maru Gothic", sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(135deg, #FFC93C, #F2A03D);
+    border: none;
+    border-radius: 999px;
+    padding: 8px 18px;
+    cursor: pointer;
+  }
+
+  .modal-error {
+    font-size: 12px;
+    color: #C0392B;
+    min-height: 14px;
+    margin: 4px 0 10px;
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+  }
 </style>
 </head>
 <body>
@@ -216,6 +350,35 @@
     <div class="footer">
       <span id="nowText"></span>
       <button id="editBtn" type="button">日付を編集</button>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <h2 class="modal-title">日付を編集</h2>
+
+      <label class="field">
+        <span>推しの呼び名</span>
+        <input type="text" id="inputName" placeholder="推し" />
+      </label>
+
+      <label class="field">
+        <span>推しの誕生日</span>
+        <input type="date" id="inputBirthday" />
+      </label>
+
+      <div class="field">
+        <span>イベント一覧</span>
+        <div id="eventList"></div>
+        <button type="button" id="addEventBtn" class="ghost-btn small">＋ イベントを追加</button>
+      </div>
+
+      <p class="modal-error" id="modalError"></p>
+
+      <div class="modal-actions">
+        <button type="button" id="cancelBtn" class="ghost-btn">キャンセル</button>
+        <button type="button" id="saveBtn" class="primary-btn">保存</button>
+      </div>
     </div>
   </div>
 
@@ -387,102 +550,79 @@
       }).format(now);
   }
 
-  function normalizeDateInput(raw) {
-    if (raw === null) return null;
-    const half = raw
-      .trim()
-      .replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
-      .replace(/[／．.]/g, "-")
-      .replace(/\//g, "-");
+  // ===== 編集モーダル =====
+  const modalOverlay = $("modalOverlay");
+  const eventListEl = $("eventList");
+  const modalError = $("modalError");
 
-    const m = half.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-    if (!m) return null;
-
-    const yyyy = m[1];
-    const mm = String(Number(m[2])).padStart(2, "0");
-    const dd = String(Number(m[3])).padStart(2, "0");
-
-    if (Number(mm) < 1 || Number(mm) > 12 || Number(dd) < 1 || Number(dd) > 31) return null;
-    return `${yyyy}-${mm}-${dd}`;
+  function addEventRow(name = "", date = "") {
+    const row = document.createElement("div");
+    row.className = "event-row";
+    row.innerHTML = `
+      <input type="text" class="ev-name" placeholder="イベント名" value="${name.replace(/"/g, "&quot;")}">
+      <input type="date" class="ev-date" value="${date}">
+      <button type="button" class="remove-btn" aria-label="削除">×</button>
+    `;
+    row.querySelector(".remove-btn").addEventListener("click", () => row.remove());
+    eventListEl.appendChild(row);
   }
 
-  function quickEdit() {
+  function openModal() {
     const data = loadData();
 
-    const name = prompt("推しの呼び名（表示用）", data.oshiName);
-    if (name !== null && name.trim() !== "") data.oshiName = name.trim();
+    $("inputName").value = data.oshiName || "";
+    $("inputBirthday").value = data.birthday || "";
 
-    const b = prompt("推しの誕生日（YYYY-MM-DD / 年は仮でOK）", data.birthday);
-    if (b !== null) {
-      const normalized = normalizeDateInput(b);
-      if (normalized) {
-        data.birthday = normalized;
-      } else if (b.trim() !== "") {
-        alert("誕生日の形式が正しくないので、変更されませんでした。\n例：2000-08-06");
-      }
+    eventListEl.innerHTML = "";
+    const events = (data.events && data.events.length > 0) ? data.events : [{ name: "", date: "" }];
+    events.forEach(ev => addEventRow(ev.name || "", ev.date || ""));
+
+    modalError.textContent = "";
+    modalOverlay.classList.add("open");
+  }
+
+  function closeModal() {
+    modalOverlay.classList.remove("open");
+  }
+
+  function saveModal() {
+    const oshiName = $("inputName").value.trim();
+    const birthday = $("inputBirthday").value; // input[type=date]なので常にYYYY-MM-DD形式 or 空文字
+
+    if (!birthday) {
+      modalError.textContent = "推しの誕生日を入力してください。";
+      return;
     }
 
-    // 複数イベントを「名前@日付」で改行入力（簡単で強い）
-    // 例：
-    // 次のイベント@2026-01-05
-    // 現地予定@2026-01-18
-    const currentLines = (data.events || [])
-      .map(ev => `${ev.name || "次のイベント"}@${ev.date}`)
-      .join("\n");
+    const events = [];
+    eventListEl.querySelectorAll(".event-row").forEach(row => {
+      const date = row.querySelector(".ev-date").value;
+      if (!date) return; // 日付未入力の行は無視
+      const name = row.querySelector(".ev-name").value.trim();
+      events.push({ name: name || "次のイベント", date });
+    });
 
-    const lines = prompt(
-      "イベント一覧（1行= 名前@YYYY-MM-DD ）\n例）次のイベント@2026-01-05",
-      currentLines || "次のイベント@2026-01-05"
-    );
-
-    if (lines !== null) {
-      const rawRows = lines
-        .split("\n")
-        .map(s => s.trim())
-        .filter(Boolean);
-
-      const events = [];
-      const invalidRows = [];
-
-      for (const row of rawRows) {
-        const [n, d] = row.split("@").map(x => (x || "").trim());
-        const normalized = normalizeDateInput(d);
-        if (normalized) {
-          events.push({ name: n || "次のイベント", date: normalized });
-        } else {
-          invalidRows.push(row);
-        }
-      }
-
-      if (invalidRows.length > 0) {
-        alert(
-          "以下の行は形式が正しくないので反映されませんでした:\n" +
-          invalidRows.join("\n") +
-          "\n\n例：次のイベント@2026-01-05"
-        );
-      }
-
-      // 1個も正しい日付がなければ既存を保持
-      if (events.length > 0) data.events = events;
+    if (events.length === 0) {
+      modalError.textContent = "イベントを1つ以上入力してください。";
+      return;
     }
 
-    // 表示名は「次の試合」ではなく「次のイベント」へ寄せる
-    // （ユーザー入力で自由にできるけど、空の時はこれ）
-    data.events = (data.events || []).map(ev => ({
-      name: ev.name || "次のイベント",
-      date: ev.date
-    }));
-
-    saveData(data);
+    saveData({ oshiName: oshiName || "推し", birthday, events });
+    closeModal();
     render();
   }
+
+  $("editBtn").addEventListener("click", openModal);
+  $("cancelBtn").addEventListener("click", closeModal);
+  $("saveBtn").addEventListener("click", saveModal);
+  $("addEventBtn").addEventListener("click", () => addEventRow());
+  modalOverlay.addEventListener("click", (e) => {
+    if (e.target === modalOverlay) closeModal();
+  });
 
   // ===== 初期化 =====
   // 既存データがなければ保存しておく（初回でも動く）
   if (!localStorage.getItem(STORAGE_KEY)) saveData(structuredClone(DEFAULT_DATA));
-
-  const editBtn = document.getElementById("editBtn");
-  if (editBtn) editBtn.addEventListener("click", quickEdit);
 
   render();
   setInterval(render, 60 * 60 * 1000); // 1時間ごと更新
