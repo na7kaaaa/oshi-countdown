@@ -331,6 +331,59 @@
     gap: 8px;
     margin-top: 4px;
   }
+
+  .danger-zone {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
+  }
+
+  .reset-link {
+    display: block;
+    width: 100%;
+    text-align: center;
+    background: none;
+    border: none;
+    font-family: "Zen Maru Gothic", sans-serif;
+    font-size: 11.5px;
+    color: #B08A6B;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 4px;
+  }
+
+  .reset-confirm {
+    margin-top: 10px;
+    padding: 12px;
+    background: #FFF4EE;
+    border: 1px solid #F3D9C7;
+    border-radius: 12px;
+  }
+
+  .reset-confirm p {
+    margin: 0 0 10px;
+    font-size: 12px;
+    color: #8A5A3D;
+    line-height: 1.5;
+  }
+
+  .reset-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .danger-btn {
+    font-family: "Zen Maru Gothic", sans-serif;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #fff;
+    background: #E0663F;
+    border: none;
+    border-radius: 999px;
+    padding: 7px 14px;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -388,6 +441,18 @@
       <div class="modal-actions">
         <button type="button" id="cancelBtn" class="ghost-btn">キャンセル</button>
         <button type="button" id="saveBtn" class="primary-btn">保存</button>
+      </div>
+
+      <div class="danger-zone">
+        <button type="button" id="resetBtn" class="reset-link">推し名・日付を初期状態にリセット</button>
+
+        <div class="reset-confirm" id="resetConfirm" style="display:none;">
+          <p>推しの名前・誕生日・イベントが全て消えて初期値に戻ります。よろしいですか？</p>
+          <div class="reset-confirm-actions">
+            <button type="button" id="resetCancelBtn" class="ghost-btn small">やめる</button>
+            <button type="button" id="resetConfirmBtn" class="danger-btn">リセットする</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -609,6 +674,7 @@
     events.forEach(ev => addEventRow(ev.name || "", ev.date || ""));
 
     modalError.textContent = "";
+    $("resetConfirm").style.display = "none";
     modalOverlay.classList.add("open");
   }
 
@@ -649,6 +715,18 @@
   $("addEventBtn").addEventListener("click", () => addEventRow());
   modalOverlay.addEventListener("click", (e) => {
     if (e.target === modalOverlay) closeModal();
+  });
+
+  $("resetBtn").addEventListener("click", () => {
+    $("resetConfirm").style.display = "block";
+  });
+  $("resetCancelBtn").addEventListener("click", () => {
+    $("resetConfirm").style.display = "none";
+  });
+  $("resetConfirmBtn").addEventListener("click", () => {
+    saveData(structuredClone(DEFAULT_DATA));
+    closeModal();
+    render();
   });
 
   // ===== 初期化 =====
