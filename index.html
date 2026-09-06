@@ -1,3 +1,190 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>推し活カウントダウン</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #FFFCF2;
+    --card: #FFFFFF;
+    --ink: #3D3222;
+    --sub: #A6935F;
+    --line: #F4E9C8;
+    --accent: #FFC93C;
+    --accent-soft: #FFF3CB;
+    --lav: #F2A03D;
+    --lav-soft: #FFE9C7;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    font-family: "Nunito", "Hiragino Sans", sans-serif;
+    color: var(--ink);
+  }
+
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px 14px;
+  }
+
+  .widget {
+    width: 100%;
+    max-width: 360px;
+    background: var(--card);
+    border-radius: 20px;
+    padding: 22px 22px 18px;
+    box-shadow: 0 10px 30px rgba(124, 111, 166, 0.08);
+    border: 1px solid var(--line);
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+  }
+
+  .row + .row {
+    border-top: 1px solid var(--line);
+  }
+
+  .icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 19px;
+    flex-shrink: 0;
+  }
+
+  .row.birthday .icon { background: var(--accent-soft); }
+  .row.event .icon { background: var(--lav-soft); }
+
+  .row-body { flex: 1; min-width: 0; }
+
+  .row-label {
+    font-family: "Zen Maru Gothic", sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--sub);
+    margin: 0 0 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .row-date {
+    font-size: 13.5px;
+    color: var(--ink);
+    opacity: 0.75;
+    margin: 0;
+  }
+
+  .pill {
+    font-family: "Zen Maru Gothic", sans-serif;
+    font-weight: 700;
+    font-size: 13.5px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    white-space: nowrap;
+    color: var(--ink);
+    flex-shrink: 0;
+  }
+
+  .row.birthday .pill { background: var(--accent); }
+  .row.event .pill { background: var(--lav); }
+
+  .pill.today {
+    background: linear-gradient(135deg, #FFC93C, #F2A03D);
+  }
+
+  .pill.past {
+    background: #EDE6D0;
+    color: #8A7D5C;
+  }
+
+  .footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
+  }
+
+  #nowText {
+    font-size: 11px;
+    color: var(--sub);
+  }
+
+  #editBtn {
+    font-family: "Zen Maru Gothic", sans-serif;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: #8A5A00;
+    background: var(--lav-soft);
+    border: none;
+    border-radius: 999px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+
+  #editBtn:hover {
+    background: #FFDCA0;
+    transform: translateY(-1px);
+  }
+
+  #editBtn:focus-visible {
+    outline: 2px solid #8A5A00;
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #editBtn { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="widget">
+    <div class="row birthday">
+      <div class="icon">🎂</div>
+      <div class="row-body">
+        <p class="row-label" id="bLabel">推し誕生日</p>
+        <p class="row-date" id="bDateText">—</p>
+      </div>
+      <span class="pill" id="bCountdown">—</span>
+    </div>
+
+    <div class="row event">
+      <div class="icon">⏳</div>
+      <div class="row-body">
+        <p class="row-label" id="eLabel">次のイベント</p>
+        <p class="row-date" id="eDateText">—</p>
+      </div>
+      <span class="pill" id="eCountdown">—</span>
+    </div>
+
+    <div class="footer">
+      <span id="nowText"></span>
+      <button id="editBtn" type="button">日付を編集</button>
+    </div>
+  </div>
+
 <script>
   // =========================
   //  推し活ウィジェット（index完結版）
@@ -211,11 +398,11 @@
   // 既存データがなければ保存しておく（初回でも動く）
   if (!localStorage.getItem(STORAGE_KEY)) saveData(structuredClone(DEFAULT_DATA));
 
-  // ボタンのidは、あなたのHTMLに合わせてね
-  // 例：<button id="editBtn">日付を変更</button>
   const editBtn = document.getElementById("editBtn");
   if (editBtn) editBtn.addEventListener("click", quickEdit);
 
   render();
   setInterval(render, 60 * 60 * 1000); // 1時間ごと更新
 </script>
+</body>
+</html>
