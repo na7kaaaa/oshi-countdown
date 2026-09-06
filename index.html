@@ -130,6 +130,13 @@
     color: var(--sub);
   }
 
+  .storage-warning {
+    font-size: 10.5px;
+    color: #B5651D;
+    margin: 8px 0 0;
+    line-height: 1.4;
+  }
+
   #editBtn {
     font-family: "Zen Maru Gothic", sans-serif;
     font-size: 12.5px;
@@ -351,6 +358,9 @@
       <span id="nowText"></span>
       <button id="editBtn" type="button">日付を編集</button>
     </div>
+    <p class="storage-warning" id="storageWarning" style="display:none;">
+      ※このブラウザでは保存が効かないため、編集内容はタブを閉じるまでのみ反映されます
+    </p>
   </div>
 
   <div class="modal-overlay" id="modalOverlay">
@@ -481,24 +491,45 @@
     }
   }
 
-  function loadData() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return structuredClone(DEFAULT_DATA);
-      const parsed = JSON.parse(raw);
+  // localStorageが使えない環境(一部プライバシー重視ブラウザのiframe埋め込みなど)向けの
+  // フォールバック。保存には失敗するが、タブを閉じるまではこの変数で状態を保持する
+  let memoryData = null;
 
-      // 最低限の整形
-      if (!parsed.oshiName) parsed.oshiName = DEFAULT_DATA.oshiName;
-      if (!parsed.birthday) parsed.birthday = DEFAULT_DATA.birthday;
-      if (!Array.isArray(parsed.events)) parsed.events = structuredClone(DEFAULT_DATA.events);
-      return parsed;
+  function isStorageAvailable() {
+    try {
+      const testKey = "__oshi_widget_storage_test__";
+      localStorage.setItem(testKey, "1");
+      localStorage.removeItem(testKey);
+      return true;
     } catch {
-      return structuredClone(DEFAULT_DATA);
+      return false;
     }
   }
 
+  function loadData() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        // 最低限の整形
+        if (!parsed.oshiName) parsed.oshiName = DEFAULT_DATA.oshiName;
+        if (!parsed.birthday) parsed.birthday = DEFAULT_DATA.birthday;
+        if (!Array.isArray(parsed.events)) parsed.events = structuredClone(DEFAULT_DATA.events);
+        return parsed;
+      }
+    } catch {
+      // localStorageにアクセスできない → メモリ上のデータか初期値にフォールバック
+    }
+    return memoryData ? structuredClone(memoryData) : structuredClone(DEFAULT_DATA);
+  }
+
   function saveData(data) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    memoryData = data; // 保存が効かない環境でも、このセッション中だけは反映されるように保持
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch {
+      // 保存できない環境。エラーは握りつぶして、呼び出し側の処理は止めない
+    }
   }
 
   function pickNearestUpcomingEvent(events, baseDateUTCNoon) {
@@ -621,8 +652,17 @@
   });
 
   // ===== 初期化 =====
+  // 保存できない環境なら、さりげなく注意書きを出す
+  if (!isStorageAvailable()) {
+    $("storageWarning").style.display = "block";
+  }
+
   // 既存データがなければ保存しておく（初回でも動く）
-  if (!localStorage.getItem(STORAGE_KEY)) saveData(structuredClone(DEFAULT_DATA));
+  try {
+    if (!localStorage.getItem(STORAGE_KEY)) saveData(structuredClone(DEFAULT_DATA));
+  } catch {
+    saveData(structuredClone(DEFAULT_DATA));
+  }
 
   render();
   setInterval(render, 60 * 60 * 1000); // 1時間ごと更新
